@@ -1,0 +1,24 @@
+out/
+bin/
+.idea/
+vendor/
+*.out
+*.html
+application.yml
+*.iml
+/.idea*
+.DS_Store
+.vscode/
+.vs/
+.cover/*
+# compiled binaries at repo root
+/api-gateway
+/mq-server
+/streamer
+/collector
+# not needed in repo
+.claude/
+QUICKSTART.md
+scripts/
+tests/
+
