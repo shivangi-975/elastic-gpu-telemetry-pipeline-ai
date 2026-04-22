@@ -1,6 +1,6 @@
 # AI Usage
 
-This document is an honest account of where I used AI assistance during this assessment, what I asked it for, and what I did myself. The intent is transparency: AI was a *tool* I used to move faster on well-understood tasks and to pressure-test my design choices, not an autopilot.
+This document is an account of where I used AI assistance during this assessment, what I asked it for, and what I did myself. The intent is transparency: AI was a *tool* I used to move faster on well-understood tasks and to pressure-test my design choices, not an autopilot.
 
 The core architectural decisions, the message-queue design, the delivery-semantics model, the SQL schema, and the trade-off analysis in the README are mine. AI helped most with **scaffolding, test generation, and acting as a sparring partner** when I wanted a second opinion on a design.
 
