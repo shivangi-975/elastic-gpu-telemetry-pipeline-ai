@@ -82,7 +82,18 @@ func (s *Store) Ping(ctx context.Context) error {
 // every *.sql file under migrations/ whose version has not yet been recorded.
 // Each file runs inside its own SERIALIZABLE transaction; the version is
 // recorded only after a successful commit.
+//
+// A Postgres advisory lock serialises migrations across processes so that
+// concurrently-starting services (e.g. api-gateway and collector) do not race
+// on schema creation. Other holders block until the lock is released, then
+// see the migrations as already applied and proceed.
 func (s *Store) migrate(ctx context.Context) error {
+	// 4242 is an arbitrary lock id, unique to this app's migration path.
+	if _, err := s.pool.Exec(ctx, `SELECT pg_advisory_lock(4242)`); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() { _, _ = s.pool.Exec(ctx, `SELECT pg_advisory_unlock(4242)`) }()
+
 	_, err := s.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    INT         PRIMARY KEY,
