@@ -396,9 +396,15 @@ func TestRetriesOnMQ500(t *testing.T) {
 func TestGracefulShutdown(t *testing.T) {
 	t.Parallel()
 
-	// Server should never be reached because context is already cancelled.
+	// Context is cancelled before Run is called so no consume/ack requests
+	// should be made. The deferred Leave call on shutdown uses a fresh
+	// context, so /leave is expected exactly once.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("unexpected HTTP request during shutdown test")
+		if r.URL.Path == "/leave" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		t.Errorf("unexpected HTTP request during shutdown test: %s %s", r.Method, r.URL.Path)
 	}))
 	defer srv.Close()
 

@@ -17,10 +17,13 @@ spec:
       labels:
         {{- include "gpu-telemetry-pipeline.labels" . | nindent 8 }}
         app.kubernetes.io/component: streamer
-      {{- with .Values.streamer.podAnnotations }}
       annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.streamer.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       {{- include "gpu-telemetry-pipeline.imagePullSecrets" . | nindent 6 }}
       securityContext:
@@ -41,6 +44,10 @@ spec:
         - name: streamer
           image: {{ include "gpu-telemetry-pipeline.serviceImage" (dict "svc" .Values.streamer "root" $) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: 9100
+              protocol: TCP
           env:
             - name: MQ_URL
               value: {{ include "gpu-telemetry-pipeline.mqURL" . | quote }}
@@ -50,6 +57,8 @@ spec:
               value: {{ .Values.streamer.intervalMs | quote }}
             - name: STREAM_BATCH_SIZE
               value: {{ .Values.streamer.batchSize | quote }}
+            - name: METRICS_ADDR
+              value: ":9100"
             - name: POD_NAME
               valueFrom:
                 fieldRef:

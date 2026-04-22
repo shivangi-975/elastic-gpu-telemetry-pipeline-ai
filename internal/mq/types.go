@@ -2,6 +2,7 @@ package mq
 
 import (
 	"sync"
+	"time"
 
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
@@ -24,9 +25,10 @@ type partition struct {
 // consumerGroup tracks partition assignments and committed offsets for a named group.
 type consumerGroup struct {
 	mu                 sync.Mutex
-	consumers          []string         // insertion-ordered consumer IDs for deterministic round-robin
-	assignedPartitions map[string][]int // consumerID -> assigned partition indices
-	committedOffsets   map[int]int64    // partitionIdx -> absolute offset of next message to read
+	consumers          []string            // insertion-ordered consumer IDs for deterministic round-robin
+	assignedPartitions map[string][]int    // consumerID -> assigned partition indices
+	committedOffsets   map[int]int64       // partitionIdx -> absolute offset of next message to read
+	lastSeen           map[string]time.Time // consumerID -> time of last Consume call; used for TTL eviction
 }
 
 // rebalance redistributes partitions across all registered consumers using round-robin.

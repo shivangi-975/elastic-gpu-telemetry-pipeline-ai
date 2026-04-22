@@ -45,10 +45,17 @@ func (s *Server) ListenAndServe() error {
 	return http.ListenAndServe(s.cfg.ListenAddr, s.mux)
 }
 
+// Shutdown stops the broker's background goroutines (eviction loop) and
+// closes the WAL file. Call this after the HTTP server has been shut down.
+func (s *Server) Shutdown() {
+	s.broker.Stop()
+}
+
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /publish", s.handlePublish)
 	s.mux.HandleFunc("GET /consume", s.handleConsume)
 	s.mux.HandleFunc("POST /ack", s.handleAck)
+	s.mux.HandleFunc("POST /leave", s.handleLeave)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /metrics/json", s.handleMetricsJSON)
 
@@ -91,6 +98,10 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleConsume(w http.ResponseWriter, r *http.Request) {
 	group := r.URL.Query().Get("group")
 	consumerID := r.URL.Query().Get("consumer_id")
+	if group == "" || consumerID == "" {
+		http.Error(w, "mq: group and consumer_id query parameters are required", http.StatusBadRequest)
+		return
+	}
 	max := 100
 	if v, err := strconv.Atoi(r.URL.Query().Get("max")); err == nil && v > 0 {
 		max = v
@@ -127,6 +138,29 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := s.broker.Health(); err != nil {
 		http.Error(w, fmt.Errorf("mq: %w", err).Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /leave — deregister a consumer from its group and trigger rebalance.
+// Body: {"group":"...","consumer_id":"..."}
+func (s *Server) handleLeave(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Group      string `json:"group"`
+		ConsumerID string `json:"consumer_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Errorf("mq: %w", err).Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Group == "" || req.ConsumerID == "" {
+		http.Error(w, "mq: group and consumer_id are required", http.StatusBadRequest)
+		return
+	}
+	if err := s.broker.Leave(req.Group, req.ConsumerID); err != nil {
+		slog.Error("leave failed", "component", "mq", "error", err)
+		http.Error(w, fmt.Errorf("mq: %w", err).Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

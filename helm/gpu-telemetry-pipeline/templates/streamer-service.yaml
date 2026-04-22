@@ -1,0 +1,20 @@
+# Headless service for the streamer. The streamer has no inbound traffic
+# requirements, but a Service with clusterIP: None lets Prometheus discover
+# and scrape the /metrics endpoint exposed by each pod on port 9100.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-streamer
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: streamer
+spec:
+  clusterIP: None
+  selector:
+    {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: streamer
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: metrics
+      protocol: TCP

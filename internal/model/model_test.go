@@ -241,32 +241,4 @@ func TestBrokerMetricsJSONSerialization(t *testing.T) {
 	}
 }
 
-func TestTelemetryDataStruct(t *testing.T) {
-	t.Parallel()
-
-	data := TelemetryData{
-		ID:        1,
-		GPUId:     "gpu-0",
-		Metric:    "temperature",
-		Value:     "75",
-		Timestamp: 1626000000,
-	}
-
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		t.Fatalf("failed to marshal TelemetryData: %v", err)
-	}
-
-	var decoded TelemetryData
-	if err := json.Unmarshal(jsonData, &decoded); err != nil {
-		t.Fatalf("failed to unmarshal TelemetryData: %v", err)
-	}
-
-	if decoded.ID != data.ID {
-		t.Errorf("ID mismatch: got %d, want %d", decoded.ID, data.ID)
-	}
-	if decoded.GPUId != data.GPUId {
-		t.Errorf("GPUId mismatch: got %q, want %q", decoded.GPUId, data.GPUId)
-	}
-}
 

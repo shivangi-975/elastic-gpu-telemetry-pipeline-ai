@@ -101,6 +101,13 @@ func (c *Collector) Run(ctx context.Context) error {
 		"poll_interval", c.cfg.PollInterval,
 	)
 	defer func() {
+		// Deregister from the MQ so our partitions are immediately rebalanced
+		// to surviving collectors rather than staying frozen until the next join.
+		leaveCtx, leaveCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := c.client.Leave(leaveCtx, c.cfg.ConsumerGroup, c.cfg.InstanceID); err != nil {
+			c.log.Warn("leave failed during shutdown", "error", err)
+		}
+		leaveCancel()
 		c.store.Close()
 		c.log.Info("collector stopped - graceful shutdown")
 	}()

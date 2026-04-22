@@ -17,10 +17,13 @@ spec:
       labels:
         {{- include "gpu-telemetry-pipeline.labels" . | nindent 8 }}
         app.kubernetes.io/component: collector
-      {{- with .Values.collector.podAnnotations }}
       annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.collector.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       {{- include "gpu-telemetry-pipeline.imagePullSecrets" . | nindent 6 }}
       securityContext:
@@ -50,6 +53,10 @@ spec:
         - name: collector
           image: {{ include "gpu-telemetry-pipeline.serviceImage" (dict "svc" .Values.collector "root" $) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: 9100
+              protocol: TCP
           env:
             - name: MQ_URL
               value: {{ include "gpu-telemetry-pipeline.mqURL" . | quote }}
@@ -64,6 +71,8 @@ spec:
               value: {{ .Values.collector.batchSize | quote }}
             - name: COLLECT_POLL_MS
               value: {{ .Values.collector.pollIntervalMs | quote }}
+            - name: METRICS_ADDR
+              value: ":9100"
             - name: POD_NAME
               valueFrom:
                 fieldRef:

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -91,10 +92,13 @@ func Handler(store StoreReader) http.Handler {
 	return r
 }
 
-// jsonContentType is a middleware that sets Content-Type for all responses.
+// jsonContentType is a middleware that sets Content-Type: application/json
+// for all responses except the Swagger UI routes, which serve HTML/JS/CSS.
 func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		if !strings.HasPrefix(r.URL.Path, "/swagger/") {
+			w.Header().Set("Content-Type", "application/json")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

@@ -45,6 +45,10 @@ spec:
             - name: MQ_WAL_PATH
               value: {{ .Values.mqServer.walPath | quote }}
             {{- end }}
+            - name: MQ_CONSUMER_TTL
+              value: {{ .Values.mqServer.consumerTTL | quote }}
+            - name: MQ_EVICT_INTERVAL
+              value: {{ .Values.mqServer.evictInterval | quote }}
           ports:
             - name: http
               containerPort: 9000

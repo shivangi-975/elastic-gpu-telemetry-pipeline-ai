@@ -1,0 +1,48 @@
+# Production environment overrides.
+# Merged on top of values.yaml during deploy-production in .gitlab-ci.yml.
+
+mqServer:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+streamer:
+  replicaCount: 2
+  intervalMs: 100
+  batchSize: 50
+
+collector:
+  replicaCount: 3
+
+apiGateway:
+  replicaCount: 3
+  ingress:
+    enabled: true
+    className: nginx
+    host: gpu-telemetry.example.com
+    tls:
+      - secretName: gpu-telemetry-tls
+        hosts:
+          - gpu-telemetry.example.com
+
+postgresql:
+  enabled: true
+  storage:
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+db:
+  external:
+    enabled: false
+    url: ""   # set to external DSN to skip bundled PostgreSQL

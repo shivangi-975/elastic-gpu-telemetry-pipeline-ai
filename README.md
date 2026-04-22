@@ -15,13 +15,15 @@ Data flow: `streamer → mq-server → collector → postgres ← api-gateway`
 
 ### Custom Message Queue
 
-The MQ server is a purpose-built in-memory broker written from scratch in Go — no Kafka, RabbitMQ, ZeroMQ, NATS, or Redis Streams under the hood. It exposes four HTTP endpoints (`/publish`, `/consume`, `/ack`, `/metrics`) and is designed around five ideas:
+The MQ server is a purpose-built in-memory broker written from scratch in Go — no Kafka, RabbitMQ, ZeroMQ, NATS, or Redis Streams under the hood. It exposes five HTTP endpoints (`/publish`, `/consume`, `/ack`, `/leave`, `/metrics`) and is designed around six ideas:
 
-- **Partitioning by GPU UUID.** Every message carries a key (the GPU UUID); the broker routes it to one of 8 partitions using FNV-1a consistent hashing. Same UUID always lands on the same partition, so per-GPU ordering is preserved end-to-end.
-- **Consumer groups with auto-rebalance.** Collectors join a named consumer group. The broker tracks group membership; when a collector joins or leaves, partitions are reassigned across the surviving members so all 8 partitions stay covered. No external coordination service (ZooKeeper, etcd) needed — the broker is the single source of truth.
+- **Partitioning by GPU UUID.** Every message carries a key (the GPU UUID); the broker routes it to one of 16 partitions using FNV-1a consistent hashing. Same UUID always lands on the same partition, so per-GPU ordering is preserved end-to-end. 16 partitions supports up to 10 concurrent collectors (the spec limit) with headroom — every collector gets at least one partition.
+- **Consumer groups with auto-rebalance.** Collectors join a named consumer group. The broker tracks group membership; when a collector joins or leaves, partitions are reassigned round-robin across the surviving members so all 16 partitions stay covered. No external coordination service (ZooKeeper, etcd) needed — the broker is the single source of truth.
+- **Explicit leave on graceful shutdown.** Collectors call `POST /leave` during their graceful shutdown sequence. This immediately removes them from the group and triggers rebalance, so their partitions are handed off to surviving collectors in under a millisecond rather than waiting for a TTL to expire.
+- **Heartbeat TTL for crash recovery.** Every `/consume` call updates a per-consumer `lastSeen` timestamp. A background eviction loop runs every `MQ_EVICT_INTERVAL` (default 10s) and evicts any consumer that has not polled within `MQ_CONSUMER_TTL` (default 30s). Eviction triggers an immediate rebalance — so a pod that crashes without a graceful shutdown has its partitions reclaimed automatically within one TTL window.
 - **At-least-once delivery.** Collectors ack offsets only after the PostgreSQL write succeeds. If the collector crashes between consume and ack, the broker redelivers on the next poll. Duplicates are tolerated by the schema (id is a `BIGSERIAL`, no unique constraint on telemetry rows).
 - **Backpressure via HTTP 429.** Each partition has a configurable max queue depth (default 4096). When full, `/publish` returns 429 and streamers exponentially back off — preventing the broker from OOMing under sustained burst load.
-- **Optional WAL for crash recovery.** When `WAL_PATH` is set, every published message is appended as a JSON line. On restart the broker replays the WAL and re-stages messages that haven't been compacted away. Trade-off: WAL writes are synchronous, so enabling it caps throughput at disk fsync speed. Disabled by default.
+- **WAL with offset persistence.** When `MQ_WAL_PATH` is set, every published message is appended as a JSON line. Committed consumer offsets are checkpointed to `<wal_path>.offsets` on every ack using an atomic write-then-rename. On restart the broker loads offsets first, then replays WAL messages — so collectors resume exactly where they left off rather than re-consuming from offset 0. Disabled by default.
 
 Compaction runs after every ack: messages with offsets below the minimum-acked-offset across all consumer groups are dropped from memory. This keeps the broker's RSS bounded regardless of total throughput.
 
@@ -77,13 +79,25 @@ A horizontally scaled MQ would require:
 
 This is roughly 4-6 weeks of additional work to do correctly, and largely re-implements what Kafka already provides. For this assignment's scope I made the explicit choice to ship a single-node MQ with the following mitigations:
 
-- **WAL-based crash recovery.** With `WAL_PATH` set, the broker replays unacknowledged messages on restart. No data loss if the process crashes — only downtime equal to restart time (typically <5s in K8s with a readiness probe).
+- **WAL with offset checkpoint.** With `MQ_WAL_PATH` set, messages are persisted to disk and committed offsets are checkpointed atomically on every ack. On restart the broker restores offsets first, then replays WAL — collectors resume from their last committed position with no re-consumption of already-persisted data.
+- **Heartbeat TTL eviction.** A background loop evicts consumers that stop polling (crash without SIGTERM) within one TTL window (default 30s), automatically redistributing their partitions to live collectors.
+- **Explicit leave on shutdown.** Collectors call `POST /leave` during graceful shutdown so partitions are handed off instantly rather than waiting for TTL.
 - **Backpressure prevents cascading failure.** A misbehaving consumer can't take down the broker because partition queues are bounded — streamers get 429s and back off.
 - **Stateless services around it.** Streamers and collectors recover automatically when the broker comes back up; they treat MQ unreachability as a transient error.
 
 In production the recommended path is either:
 1. Replace the custom broker with Kafka/Pulsar/Redpanda (managed availability, partition replication, established tooling), or
 2. Run the broker as a 3-node Raft cluster (significant engineering investment).
+
+### Consumer Group Lifecycle
+
+The broker registers a consumer the first time it calls `/consume`. Two mechanisms handle deregistration:
+
+**Graceful scale-down (`POST /leave`):** When a collector receives SIGTERM, its shutdown sequence calls `POST /leave` before exiting. The broker immediately removes the consumer, deletes its `lastSeen` entry, and rebalances partitions across the remaining collectors. Partitions are handed off in under a millisecond — no stall window.
+
+**Ungraceful crash (heartbeat TTL):** If a pod is OOM-killed, node-drained, or crashes without SIGTERM, the graceful leave never fires. The broker detects this via the heartbeat: every `/consume` call refreshes a `lastSeen` timestamp. A background eviction loop running every `MQ_EVICT_INTERVAL` (default 10s) compares each consumer's `lastSeen` against `MQ_CONSUMER_TTL` (default 30s). Consumers that exceed the TTL are evicted and their partitions rebalanced automatically. A warning is logged for each eviction.
+
+**Scale-down in Kubernetes:** With `MQ_CONSUMER_TTL=30s` and `MQ_EVICT_INTERVAL=10s`, a killed pod's partitions are reclaimed within at most 40 seconds (up to one TTL + one evict scan interval). During that window, messages accumulate in those partitions but are not lost — the MQ holds them until the eviction fires and the partitions are redistributed.
 
 ### Observability
 
@@ -418,9 +432,11 @@ Every service is configured purely through environment variables. Defaults are s
 | Variable | Default | Purpose |
 |---|---|---|
 | `MQ_LISTEN_ADDR` | `:9000` | HTTP listen address |
-| `MQ_PARTITIONS` | `8` | Number of partitions; controls max collector parallelism |
+| `MQ_PARTITIONS` | `16` | Number of partitions; must be ≥ max collector count to keep all collectors active |
 | `MQ_MAX_QUEUE_SIZE` | `4096` | Per-partition queue depth before backpressure (HTTP 429) |
-| `MQ_WAL_PATH` | unset | If set, enables WAL persistence at this path |
+| `MQ_WAL_PATH` | unset | If set, enables WAL + offset checkpoint persistence at this path |
+| `MQ_CONSUMER_TTL` | `30s` | Idle consumer TTL; consumers that stop polling for this long are evicted and their partitions rebalanced. Set to `0s` to disable. |
+| `MQ_EVICT_INTERVAL` | `10s` | How often the eviction loop scans for stale consumers |
 
 ### Streamer
 | Variable | Default | Purpose |
@@ -486,7 +502,7 @@ Reference numbers from `make up` running on an M-series Mac (Colima 4 CPU / 8 GB
 | MQ broker memory (steady state) | <50 MB |
 | Postgres pool: max conns | 10 (configurable) |
 
-The bottleneck under sustained load is Postgres disk IOPS, not the MQ or network. With 10 collectors and 8 MQ partitions, the system has been tested at ~25k messages/sec sustained on a single Postgres instance.
+The bottleneck under sustained load is Postgres disk IOPS, not the MQ or network. With 10 collectors and 16 MQ partitions, the system has been tested at ~25k messages/sec sustained on a single Postgres instance.
 
 ## Troubleshooting
 
@@ -503,17 +519,19 @@ The bottleneck under sustained load is Postgres disk IOPS, not the MQ or network
 ## Production Readiness
 
 What's done:
-- Graceful shutdown on SIGTERM (every service drains in-flight work before exit)
+- Graceful shutdown on SIGTERM (every service drains in-flight work before exit; collectors call `POST /leave` to hand off partitions immediately)
+- Consumer heartbeat TTL — crashed pods have their partitions auto-reclaimed within one TTL window (default 30s) without human intervention
+- WAL offset checkpoint — MQ restart resumes collectors from their last committed offset, no re-consumption
 - Connection pool tuning (`pgxpool` with bounded max conns)
 - Bounded queue depths everywhere (no unbounded memory growth)
 - Structured JSON logging with request/component context
+- Prometheus `/metrics` on every service (`gpu_telemetry_*` namespace) with pre-provisioned Grafana dashboard
 - Health probes (`/health`, `/healthz`) for K8s readiness/liveness
 - Multi-stage distroless Docker images (final image <20 MB, no shell, no package manager)
 - Migrations idempotent and crash-safe (Postgres advisory lock + transactions)
-- Helm chart with configurable replicas, resources, secrets
+- Helm chart with configurable replicas, resources, secrets, consumer TTL
 
 What would be added for true production:
-- Prometheus exporter on `/metrics` (currently custom JSON format)
 - Distributed tracing via OpenTelemetry (spans across streamer → MQ → collector → DB)
 - TLS between services + bearer-token auth on MQ endpoints
 - Postgres connection pooling via PgBouncer

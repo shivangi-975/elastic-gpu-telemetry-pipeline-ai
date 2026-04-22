@@ -80,6 +80,37 @@ func (c *Client) Ack(ctx context.Context, req model.AckRequest) error {
 	return nil
 }
 
+// Leave deregisters this consumer from its group on the MQ server so that
+// its assigned partitions are immediately rebalanced to remaining consumers.
+// Uses a short best-effort timeout — failure is logged but not fatal.
+func (c *Client) Leave(ctx context.Context, group, consumerID string) error {
+	body, err := json.Marshal(map[string]string{
+		"group":       group,
+		"consumer_id": consumerID,
+	})
+	if err != nil {
+		return fmt.Errorf("collector: leave: marshal: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost,
+		c.baseURL+"/leave", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("collector: leave: build request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("collector: leave: %w", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("collector: leave: unexpected status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // doWithRetry executes fn, retrying on HTTP 5xx up to maxRetries times.
 // Each attempt uses a child context with the given per-request timeout.
 // If out is non-nil the response body is JSON-decoded into it on success.
