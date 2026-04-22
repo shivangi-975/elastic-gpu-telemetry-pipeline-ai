@@ -72,14 +72,3 @@ When something broke, I'd often paste the error into AI alongside the relevant f
 - The streamer was occasionally publishing partial batches on shutdown — AI helped me reason through the ticker / context / final-flush interaction and pointed out that my `defer flush()` was firing before the in-flight batch had been appended. Moved the final flush after the loop exited cleanly.
 
 These are the cases where AI was a faster `man` page or Stack Overflow.
-
----
-
-## Where I deliberately did *not* use AI
-
-- **The MQ broker's core data structures** (`partition`, `consumerGroup`, `PartitionRouter`) and the publish/consume/ack/compact state machine. I wanted to be able to walk through this on a whiteboard.
-- **The SQL schema and migration ordering.** I wrote these by hand because I needed to reason about index coverage, FK direction, and the `BIGSERIAL` choice for telemetry id (you'd overflow a SERIAL in a few weeks at modest throughput).
-- **The trade-off sections in the README** — Single-Node MQ SPOF, Scaling Model, Delivery Semantics, Production Readiness. These are the parts an interviewer is most likely to drill into, so they're written in my own words.
-- **Commit hygiene** — splitting work into 21 logically-grouped commits across the 3-day timeline was a manual exercise so the history reads as a real build progression rather than a single dump.
-
-If you want to verify the split, the git history is intentionally fine-grained: each commit corresponds to one focused chunk of work, and the commit messages describe what was added or fixed in that step.

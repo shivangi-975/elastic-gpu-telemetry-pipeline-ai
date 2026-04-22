@@ -16,7 +16,7 @@ variables:
   REGISTRY: registry.gitlab.com/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
   TAG: $CI_COMMIT_SHORT_SHA
   HELM_RELEASE: gpu-telemetry
-  GO_VERSION: "1.22"
+  GO_VERSION: "1.23"
 
 default:
   image: golang:${GO_VERSION}-alpine
@@ -32,9 +32,12 @@ stages:
 
 unit-test:
   stage: test
+  before_script:
+    - go install github.com/boumenot/gocover-cobertura@latest
   script:
     - go test ./... -short -race -count=1 -coverprofile=coverage.out -covermode=atomic
     - go tool cover -func=coverage.out
+    - gocover-cobertura < coverage.out > coverage.xml
   coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
   artifacts:
     reports:
@@ -43,6 +46,7 @@ unit-test:
         path: coverage.xml
     paths:
       - coverage.out
+      - coverage.xml
     expire_in: 1 week
 
 integration-test:
@@ -126,7 +130,7 @@ deploy-staging:
       helm upgrade --install $HELM_RELEASE helm/gpu-telemetry-pipeline \
         --namespace   $HELM_NS \
         --create-namespace \
-        --set image.registry=$REGISTRY \
+        --set global.imageRegistry=$REGISTRY \
         --set image.tag=$TAG \
         --values helm/gpu-telemetry-pipeline/values.yaml \
         --values helm/gpu-telemetry-pipeline/values.staging.yaml \
@@ -147,7 +151,7 @@ deploy-production:
       helm upgrade --install $HELM_RELEASE helm/gpu-telemetry-pipeline \
         --namespace   $HELM_NS \
         --create-namespace \
-        --set image.registry=$REGISTRY \
+        --set global.imageRegistry=$REGISTRY \
         --set image.tag=$TAG \
         --values helm/gpu-telemetry-pipeline/values.yaml \
         --values helm/gpu-telemetry-pipeline/values.production.yaml \
