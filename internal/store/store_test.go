@@ -307,7 +307,7 @@ func TestBulkInsertTelemetry_Single(t *testing.T) {
 		t.Fatalf("BulkInsertTelemetry: %v", err)
 	}
 
-	records, err := s.QueryTelemetry(ctx, "gpu-single", nil, nil, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-single", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestBulkInsertTelemetry_LargeBatch_1000(t *testing.T) {
 		t.Fatalf("BulkInsertTelemetry: %v", err)
 	}
 
-	got, err := s.QueryTelemetry(ctx, "gpu-bulk", nil, nil, 0, 0)
+	got, err := s.QueryTelemetry(ctx, "gpu-bulk", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestQueryTelemetry_TimeRange(t *testing.T) {
 	// base+1h to base+3h inclusive → values 2, 3, 4.
 	start := base.Add(time.Hour)
 	end := base.Add(3 * time.Hour)
-	records, err := s.QueryTelemetry(ctx, "gpu-q", &start, &end, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-q", "", &start, &end, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestQueryTelemetry_NoStartBound(t *testing.T) {
 
 	// No lower bound, end at base+2h → values 1, 2, 3.
 	end := base.Add(2 * time.Hour)
-	records, err := s.QueryTelemetry(ctx, "gpu-q", nil, &end, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-q", "", nil, &end, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -430,7 +430,7 @@ func TestQueryTelemetry_NoEndBound(t *testing.T) {
 
 	// Start at base+3h, no upper bound → values 4, 5.
 	start := base.Add(3 * time.Hour)
-	records, err := s.QueryTelemetry(ctx, "gpu-q", &start, nil, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-q", "", &start, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestQueryTelemetry_NoBounds(t *testing.T) {
 	s, _ := setupQueryTest(t)
 	ctx := context.Background()
 
-	records, err := s.QueryTelemetry(ctx, "gpu-q", nil, nil, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-q", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
@@ -468,7 +468,7 @@ func TestQueryTelemetry_UnknownGPU(t *testing.T) {
 	s, _ := setupQueryTest(t)
 	ctx := context.Background()
 
-	records, err := s.QueryTelemetry(ctx, "gpu-does-not-exist", nil, nil, 0, 0)
+	records, err := s.QueryTelemetry(ctx, "gpu-does-not-exist", "", nil, nil, 0, 0)
 	if err != nil {
 		t.Fatalf("QueryTelemetry: %v", err)
 	}
