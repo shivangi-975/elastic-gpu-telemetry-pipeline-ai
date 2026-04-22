@@ -3,7 +3,7 @@ FROM alpine:3.19 AS tools
 RUN apk add --no-cache busybox-static
 
 # Stage 2 – compile the binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./

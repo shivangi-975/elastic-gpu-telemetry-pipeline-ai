@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
 
@@ -49,7 +50,23 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /consume", s.handleConsume)
 	s.mux.HandleFunc("POST /ack", s.handleAck)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
-	s.mux.HandleFunc("GET /metrics", s.handleMetrics)
+	s.mux.HandleFunc("GET /metrics/json", s.handleMetricsJSON)
+
+	// Prometheus exposition. Refresh broker gauges on each scrape so the
+	// numbers reflect live partition state, not just deltas from publish/ack.
+	reg := metrics.MustRegister(
+		metrics.MQPublishedTotal,
+		metrics.MQConsumedTotal,
+		metrics.MQAckedTotal,
+		metrics.MQBackpressureTotal,
+		metrics.MQPartitionLength,
+		metrics.MQConsumerOffset,
+	)
+	promHandler := metrics.Handler(reg)
+	s.mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		_ = s.broker.Metrics() // side-effect: refreshes gauges
+		promHandler.ServeHTTP(w, r)
+	})
 }
 
 // POST /publish
@@ -115,8 +132,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// GET /metrics
-func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+// GET /metrics/json — debug-friendly snapshot of broker state.
+// /metrics serves the standard Prometheus exposition format (registered above).
+func (s *Server) handleMetricsJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.broker.Metrics())
 }
 

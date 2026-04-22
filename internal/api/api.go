@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 	httpSwagger "github.com/swaggo/http-swagger"
 
+	apimetrics "github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
 
@@ -63,11 +64,20 @@ func Handler(store StoreReader) http.Handler {
 	// Apply middleware
 	r.Use(corsMiddleware)
 	r.Use(loggingMiddleware)
+	r.Use(metricsMiddleware)
 	r.Use(jsonContentType)
 
 	// Health check endpoints (/health and /healthz are both supported)
 	r.HandleFunc("/health", handleHealth(store)).Methods(http.MethodGet)
 	r.HandleFunc("/healthz", handleHealth(store)).Methods(http.MethodGet)
+
+	// Prometheus exposition. Registered on a fresh registry so go runtime +
+	// process collectors are scoped per-process.
+	reg := apimetrics.MustRegister(
+		apimetrics.APIRequestsTotal,
+		apimetrics.APIRequestDuration,
+	)
+	r.Handle("/metrics", apimetrics.Handler(reg)).Methods(http.MethodGet)
 
 	// API v1 routes
 	apiV1 := r.PathPrefix("/api/v1").Subrouter()
@@ -104,6 +114,44 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// statusRecorder captures the response status code so middleware can label
+// Prometheus counters without buffering the body.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// metricsMiddleware records request count + latency per route. Route is taken
+// from the gorilla/mux template (e.g. "/api/v1/gpus/{uuid}/telemetry") so
+// cardinality stays bounded; raw paths would explode it.
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+
+		route := r.URL.Path
+		if m := mux.CurrentRoute(r); m != nil {
+			if t, err := m.GetPathTemplate(); err == nil {
+				route = t
+			}
+		}
+		// Don't record /metrics scrapes — would create a self-referencing series.
+		if route == "/metrics" {
+			return
+		}
+		apimetrics.APIRequestsTotal.
+			WithLabelValues(route, r.Method, strconv.Itoa(rec.status)).Inc()
+		apimetrics.APIRequestDuration.
+			WithLabelValues(route).Observe(time.Since(start).Seconds())
 	})
 }
 

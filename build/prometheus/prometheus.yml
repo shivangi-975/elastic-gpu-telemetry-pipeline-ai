@@ -1,0 +1,33 @@
+# Prometheus scrape configuration for the GPU telemetry pipeline.
+# Each service exposes /metrics in the Prometheus exposition format.
+#
+# Scrape targets use the docker-compose service names; ports match the
+# in-container listen addresses (NOT the host-mapped ports).
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: mq-server
+    static_configs:
+      - targets: ["mq-server:9000"]
+        labels:
+          service: mq-server
+
+  - job_name: api-gateway
+    static_configs:
+      - targets: ["api-gateway:8080"]
+        labels:
+          service: api-gateway
+
+  - job_name: streamer
+    static_configs:
+      - targets: ["streamer:9100"]
+        labels:
+          service: streamer
+
+  - job_name: collector
+    static_configs:
+      - targets: ["collector:9100"]
+        labels:
+          service: collector

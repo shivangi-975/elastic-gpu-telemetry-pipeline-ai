@@ -356,7 +356,7 @@ func TestHTTPMetrics(t *testing.T) {
 	}
 	mustPublish(t, ts, append(p0Msgs, p1Msgs...))
 
-	resp := getURL(t, ts, "/metrics")
+	resp := getURL(t, ts, "/metrics/json")
 	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
@@ -393,7 +393,7 @@ func TestHTTPContentType(t *testing.T) {
 		body   any
 	}{
 		{"GET", "/health", nil},
-		{"GET", "/metrics", nil},
+		{"GET", "/metrics/json", nil},
 		{"GET", "/consume?group=g&consumer_id=c", nil},
 	}
 	for _, ep := range endpoints {

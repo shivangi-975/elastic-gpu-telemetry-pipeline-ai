@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
 
@@ -112,11 +115,15 @@ func (b *Broker) publishOne(msg model.PublishMessage, writeWAL bool) error {
 	p.mu.Lock()
 	if len(p.messages) >= b.cfg.MaxQueueSize {
 		p.mu.Unlock()
+		metrics.MQBackpressureTotal.Inc()
 		return fmt.Errorf("mq: partition %d is full", partIdx)
 	}
 	p.messages = append(p.messages, msg)
 	p.nextOffset++
 	p.mu.Unlock()
+	if writeWAL {
+		metrics.MQPublishedTotal.Inc()
+	}
 
 	if writeWAL && b.walFile != nil {
 		if err := b.appendWAL(msg); err != nil {
@@ -208,6 +215,7 @@ func (b *Broker) Consume(group, consumerID string, maxMessages int) (model.Consu
 		copy(msgs, p.messages[start:end])
 		p.mu.Unlock()
 
+		metrics.MQConsumedTotal.WithLabelValues(group).Add(float64(len(msgs)))
 		return model.ConsumeResponse{
 			Partition: partIdx,
 			Offset:    absOffset + int64(end-start), // absolute offset of next unread message
@@ -234,6 +242,8 @@ func (b *Broker) Ack(req model.AckRequest) error {
 	g.mu.Lock()
 	g.committedOffsets[req.Partition] = req.Offset
 	g.mu.Unlock()
+
+	metrics.MQAckedTotal.WithLabelValues(req.ConsumerGroup).Inc()
 
 	// Compact: remove messages all known groups have already consumed.
 	b.compactPartition(req.Partition)
@@ -307,6 +317,18 @@ func (b *Broker) Metrics() model.BrokerMetrics {
 		g.mu.Unlock()
 	}
 	b.groupsMu.RUnlock()
+
+	// Mirror the snapshot into Prometheus gauges so /metrics reflects current state.
+	for i, n := range lengths {
+		metrics.MQPartitionLength.WithLabelValues(strconv.Itoa(i)).Set(float64(n))
+	}
+	for k, off := range offsets {
+		// k is "group:partition"
+		parts := strings.SplitN(k, ":", 2)
+		if len(parts) == 2 {
+			metrics.MQConsumerOffset.WithLabelValues(parts[0], parts[1]).Set(float64(off))
+		}
+	}
 
 	return model.BrokerMetrics{
 		PartitionLengths: lengths,

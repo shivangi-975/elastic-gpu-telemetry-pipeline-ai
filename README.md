@@ -8,6 +8,8 @@ Data flow: `streamer → mq-server → collector → postgres ← api-gateway`
 
 - [Swagger UI](http://localhost:8080/swagger/index.html) — available when stack is running
 - [OpenAPI spec](docs/swagger.yaml)
+- [Grafana dashboard](http://localhost:3000/d/gpu-telemetry-overview) — pipeline overview, anonymous viewer enabled
+- [Prometheus](http://localhost:9090) — raw query interface
 
 ## Design
 
@@ -86,8 +88,10 @@ In production the recommended path is either:
 ### Observability
 
 - **Structured JSON logs** via `log/slog` on every component — fields like `component`, `instance`, `gpu_uuid`, `partition`, `offset` make logs grep-friendly and ready to feed into ELK or Loki.
-- **`/metrics` endpoint** on the MQ exposes per-partition queue depth, total published, total consumed, and per-consumer-group committed offsets — enough to plot lag in Grafana.
+- **Prometheus `/metrics`** on every service in the standard text exposition format. Series use the `gpu_telemetry_*` namespace and cover MQ throughput, partition depth, consumer offsets, backpressure, collector persist latency, API request rate + p95, and CSV parse errors.
+- **Pre-provisioned Grafana dashboard** ships in `build/grafana/dashboards/` — `make up` brings up Prometheus on `:9090` and Grafana on `:3000` (anonymous viewer enabled) with the *GPU Telemetry Pipeline — Overview* dashboard already loaded. Demonstrates throughput, queue depth, backpressure, and latency without any manual setup.
 - **`/health` and `/healthz`** on the API for K8s liveness/readiness probes.
+- **`/metrics/json`** still served by the MQ for human debugging — same numbers, JSON shape.
 
 ### Delivery Semantics — At-least-once
 

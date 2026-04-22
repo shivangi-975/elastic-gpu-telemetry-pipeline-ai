@@ -102,5 +102,44 @@ services:
       postgres:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Prometheus – scrapes /metrics from every pipeline service
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./build/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    depends_on:
+      - mq-server
+      - api-gateway
+
+  # ---------------------------------------------------------------------------
+  # Grafana – pre-provisioned with the Prometheus datasource and dashboard
+  # Access:  http://localhost:3000   (admin / admin)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./build/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./build/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

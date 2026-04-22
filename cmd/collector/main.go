@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/example/gpu-telemetry-pipeline/internal/collector"
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/store"
 )
 
@@ -40,6 +41,20 @@ func main() {
 		os.Exit(1)
 	}
 	// store.Close is called by collector.Run via StoreInterface.Close on shutdown.
+
+	// Expose Prometheus /metrics on a sidecar port (collector is otherwise
+	// headless). Address overridable via METRICS_ADDR.
+	metricsAddr := os.Getenv("METRICS_ADDR")
+	if metricsAddr == "" {
+		metricsAddr = ":9100"
+	}
+	stopMetrics := metrics.ServeAsync(metricsAddr, metrics.MustRegister(
+		metrics.CollectorBatchesConsumed,
+		metrics.CollectorRowsInserted,
+		metrics.CollectorPersistErrors,
+		metrics.CollectorPersistDuration,
+	))
+	defer stopMetrics()
 
 	c, err := collector.New(cfg, st)
 	if err != nil {

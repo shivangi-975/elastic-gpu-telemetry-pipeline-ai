@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
 
@@ -131,15 +132,20 @@ func (c *Collector) Run(ctx context.Context) error {
 		}
 
 		c.log.Info("batch consumed", "count", len(resp.Messages))
+		metrics.CollectorBatchesConsumed.Inc()
 
+		persistStart := time.Now()
 		if err := c.persist(ctx, resp.Messages); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
 			c.log.Error("DB write failed - batch will be redelivered", "error", err)
+			metrics.CollectorPersistErrors.Inc()
 			c.sleep(ctx)
 			continue
 		}
+		metrics.CollectorPersistDuration.Observe(time.Since(persistStart).Seconds())
+		metrics.CollectorRowsInserted.Add(float64(len(resp.Messages)))
 
 		// Ack only after all DB writes have succeeded.
 		ackReq := model.AckRequest{
@@ -152,6 +158,7 @@ func (c *Collector) Run(ctx context.Context) error {
 				return nil
 			}
 			c.log.Error("ack failed", "error", err, "offset", resp.Offset)
+			metrics.CollectorPersistErrors.Inc()
 		} else {
 			c.log.Info("ack success", "offset", resp.Offset)
 		}

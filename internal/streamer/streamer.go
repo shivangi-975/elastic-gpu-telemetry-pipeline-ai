@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/model"
 )
 
@@ -179,6 +180,7 @@ func (s *Streamer) parseRow(record []string) (model.PublishMessage, bool) {
 	if len(record) < minFields {
 		s.logger.Warn("malformed csv row: too few fields",
 			"got", len(record), "want", minFields)
+		metrics.StreamerCSVParseErrors.Inc()
 		return model.PublishMessage{}, false
 	}
 
@@ -186,6 +188,7 @@ func (s *Streamer) parseRow(record []string) (model.PublishMessage, bool) {
 	if err != nil {
 		s.logger.Warn("malformed csv row: invalid metric value",
 			"raw", record[10], "error", err)
+		metrics.StreamerCSVParseErrors.Inc()
 		return model.PublishMessage{}, false
 	}
 
@@ -204,7 +207,11 @@ func (s *Streamer) parseRow(record []string) (model.PublishMessage, bool) {
 func (s *Streamer) flush(ctx context.Context, batch []model.PublishMessage) {
 	if err := s.pub.PublishBatch(ctx, model.PublishBatch{Messages: batch}); err != nil {
 		s.logger.Error("flush failed", "error", err, "size", len(batch))
+		metrics.StreamerPublishErrors.Inc()
+		return
 	}
+	metrics.StreamerBatchesPublished.Inc()
+	metrics.StreamerRowsPublished.Add(float64(len(batch)))
 }
 
 // finalFlush publishes any remaining messages on a fresh context so that a
@@ -217,5 +224,9 @@ func (s *Streamer) finalFlush(batch []model.PublishMessage) {
 	defer cancel()
 	if err := s.pub.PublishBatch(ctx, model.PublishBatch{Messages: batch}); err != nil {
 		s.logger.Error("final flush failed", "error", err, "size", len(batch))
+		metrics.StreamerPublishErrors.Inc()
+		return
 	}
+	metrics.StreamerBatchesPublished.Inc()
+	metrics.StreamerRowsPublished.Add(float64(len(batch)))
 }

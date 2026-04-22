@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
 	"github.com/example/gpu-telemetry-pipeline/internal/streamer"
 )
 
@@ -25,6 +26,16 @@ func main() {
 		slog.Error("failed to create streamer", "error", err)
 		os.Exit(1)
 	}
+
+	// Expose Prometheus /metrics on a sidecar HTTP port. The streamer is
+	// otherwise headless so this is the only HTTP surface it exposes.
+	stopMetrics := metrics.ServeAsync(envStr("METRICS_ADDR", ":9100"), metrics.MustRegister(
+		metrics.StreamerRowsPublished,
+		metrics.StreamerBatchesPublished,
+		metrics.StreamerPublishErrors,
+		metrics.StreamerCSVParseErrors,
+	))
+	defer stopMetrics()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -48,6 +59,13 @@ func mustEnv(key string) string {
 
 func envInt(key string, fallback int) int {
 	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
+
+func envStr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
