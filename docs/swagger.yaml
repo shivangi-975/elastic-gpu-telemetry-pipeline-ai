@@ -1,0 +1,154 @@
+basePath: /
+definitions:
+  github_com_example_gpu-telemetry-pipeline_internal_model.GPU:
+    properties:
+      hostname:
+        type: string
+      last_seen:
+        type: string
+      uuid:
+        type: string
+    type: object
+  github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord:
+    properties:
+      collected_at:
+        type: string
+      gpu_uuid:
+        type: string
+      hostname:
+        type: string
+      id:
+        type: integer
+      metric_name:
+        type: string
+      metric_value:
+        type: number
+    type: object
+  internal_api.TelemetryPage:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord'
+        type: array
+      has_more:
+        type: boolean
+      limit:
+        type: integer
+      offset:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: Platform Team
+  description: REST API for querying GPU telemetry data collected from an AI cluster.
+  title: GPU Telemetry Pipeline API
+  version: "1.0"
+paths:
+  /api/v1/gpus:
+    get:
+      description: Returns all GPU devices for which telemetry data is available,
+        ordered by UUID.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.GPU'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List all GPUs
+      tags:
+      - gpus
+  /api/v1/gpus/{id}/telemetry:
+    get:
+      description: Returns paginated telemetry records for the specified GPU ordered
+        by collected_at ascending.
+      parameters:
+      - description: GPU UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Start time filter, inclusive (RFC3339, e.g. 2006-01-02T15:04:05Z)
+        in: query
+        name: start_time
+        type: string
+      - description: End time filter, inclusive (RFC3339)
+        in: query
+        name: end_time
+        type: string
+      - description: Max records per page (default 1000, max 10000)
+        in: query
+        name: limit
+        type: integer
+      - description: Number of records to skip (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api.TelemetryPage'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Query telemetry for a GPU
+      tags:
+      - gpus
+  /api/v1/openapi.json:
+    get:
+      description: Returns the OpenAPI 3.0 specification for this API in JSON format
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OpenAPI Specification
+      tags:
+      - documentation
+  /health:
+    get:
+      description: Returns 200 and {"status":"ok"} when the database is reachable;
+        503 otherwise.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"
