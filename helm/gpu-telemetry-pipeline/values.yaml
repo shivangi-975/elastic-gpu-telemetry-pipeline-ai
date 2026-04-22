@@ -4,8 +4,8 @@
 
 # Global settings shared by all services.
 global:
-  imageRegistry: ""       # e.g. "registry.example.com"  – prepended to every image
-  imagePullSecrets: []    # e.g. [{name: regcred}]
+  imageRegistry: "ghcr.io/shivangi-975"  # published images; override with your own registry if you rebuild
+  imagePullSecrets: []                    # e.g. [{name: regcred}] for private registries
 
 # Default image tag and pull policy for all services.
 # Override per-service with <service>.image.tag.
