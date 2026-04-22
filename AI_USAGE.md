@@ -1,6 +1,6 @@
 # AI Usage
 
-This document is an honest account of where I used AI assistance (Claude) during this assessment, what I asked it for, and what I did myself. The intent is transparency: AI was a *tool* I used to move faster on well-understood tasks and to pressure-test my design choices, not an autopilot.
+This document is an honest account of where I used AI assistance during this assessment, what I asked it for, and what I did myself. The intent is transparency: AI was a *tool* I used to move faster on well-understood tasks and to pressure-test my design choices, not an autopilot.
 
 The core architectural decisions, the message-queue design, the delivery-semantics model, the SQL schema, and the trade-off analysis in the README are mine. AI helped most with **scaffolding, test generation, and acting as a sparring partner** when I wanted a second opinion on a design.
 
@@ -68,8 +68,8 @@ The judgment about *what to test* and *which interfaces to expose for testing* w
 When something broke, I'd often paste the error into AI alongside the relevant file and ask "what's the most likely cause." Examples:
 
 - The `cmd/` directory wasn't being committed — root cause was `.gitignore` patterns missing leading slashes (`/api-gateway` vs `api-gateway`), so the binary-ignore rules were also matching `cmd/api-gateway/`. AI spotted it once I gave it both the gitignore and the `git status` output.
-- OpenAPI spec was rendering `github_com_example_gpu-telemetry-pipeline_internal_model.GPU` instead of `model.GPU` — AI pointed me at swag's `--parseInternal` vs `--parseDependency` flags.
-- A Helm `helm upgrade --install --wait` was timing out at 5 minutes; AI suggested dropping `--wait` and using `kubectl get pods -w` so I could see *which* pod was stuck (it was the MQ server waiting on a writable WAL path).
+- The collector kept re-reading messages it had already persisted after a restart — I walked through the consume → DB-commit → ack ordering with AI and confirmed the issue was that I was acking *before* the bulk insert returned, instead of after. Reordering the ack fixed it and tightened the at-least-once guarantee.
+- The streamer was occasionally publishing partial batches on shutdown — AI helped me reason through the ticker / context / final-flush interaction and pointed out that my `defer flush()` was firing before the in-flight batch had been appended. Moved the final flush after the loop exited cleanly.
 
 These are the cases where AI was a faster `man` page or Stack Overflow.
 
@@ -81,22 +81,5 @@ These are the cases where AI was a faster `man` page or Stack Overflow.
 - **The SQL schema and migration ordering.** I wrote these by hand because I needed to reason about index coverage, FK direction, and the `BIGSERIAL` choice for telemetry id (you'd overflow a SERIAL in a few weeks at modest throughput).
 - **The trade-off sections in the README** — Single-Node MQ SPOF, Scaling Model, Delivery Semantics, Production Readiness. These are the parts an interviewer is most likely to drill into, so they're written in my own words.
 - **Commit hygiene** — splitting work into 21 logically-grouped commits across the 3-day timeline was a manual exercise so the history reads as a real build progression rather than a single dump.
-
----
-
-## Honest summary
-
-| Area | Who drove it |
-|---|---|
-| MQ design (partitioning, consumer groups, backpressure, WAL semantics) | Me, with AI as critic |
-| MQ implementation | Mostly me; AI helped with HTTP handler boilerplate |
-| Streamer / collector business logic | Me |
-| Postgres schema, migrations, COPY-protocol path | Me |
-| API handlers + middleware | Me |
-| **Unit & integration tests** | **AI generated, I designed the seams and reviewed** |
-| Swagger annotations, Dockerfiles, Helm chart skeleton, docker-compose | AI generated, I tuned |
-| README — architecture diagram & section structure | AI scaffolded |
-| README — design / trade-offs / scaling / delivery semantics | Me |
-| Debugging (gitignore, swag flags, Colima, helm timeouts) | Me, with AI as a faster reference |
 
 If you want to verify the split, the git history is intentionally fine-grained: each commit corresponds to one focused chunk of work, and the commit messages describe what was added or fixed in that step.
