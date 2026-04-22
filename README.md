@@ -207,10 +207,92 @@ Password: changeme
 DSN:      postgres://telemetry:changeme@localhost:5433/telemetry?sslmode=disable
 ```
 
-Connect directly:
+### Connect
 
-```
+Pick whichever you have available:
+
+```bash
+# 1. local psql client
 psql postgres://telemetry:changeme@localhost:5433/telemetry
+
+# 2. one-shot query (no interactive prompt)
+psql postgres://telemetry:changeme@localhost:5433/telemetry -c "SELECT count(*) FROM telemetry;"
+
+# 3. exec into the container (no local psql needed)
+docker compose exec postgres psql -U telemetry -d telemetry
+```
+
+Handy psql meta-commands: `\dt` list tables · `\d <table>` describe · `\x` toggle expanded rows · `\q` quit.
+
+### Schema
+
+Three tables managed by version-tracked SQL migrations under `internal/store/migrations/`:
+
+**`gpus`** — one row per unique GPU UUID (upserted by the collector)
+
+| column | type | source |
+|---|---|---|
+| `uuid` | text **PK** | CSV column 1 |
+| `hostname` | text | CSV column 0 |
+| `model_name` | text (default `''`) | CSV column 5 (added in migration 003) |
+| `last_seen` | timestamptz | stamped at processing time on each upsert |
+
+**`telemetry`** — one row per (gpu, metric) sample
+
+| column | type | notes |
+|---|---|---|
+| `id` | bigserial **PK** | monotonic, no unique constraint → tolerates at-least-once dupes |
+| `gpu_uuid` | text **FK → gpus(uuid)** ON DELETE CASCADE | partition key end-to-end |
+| `metric_name` | text | e.g. `DCGM_FI_DEV_GPU_UTIL` |
+| `metric_value` | double precision | |
+| `collected_at` | timestamptz | **process time, not the CSV `timestamp` column** — per the PDF spec |
+
+Indexes:
+- `idx_telemetry_gpu_time` on `(gpu_uuid, collected_at DESC)` — makes the API time-window query an index range scan
+- `idx_telemetry_time` on `(collected_at DESC)` — supports global recent-window queries
+
+**`schema_migrations`** — version tracker; rows applied in order under a Postgres advisory lock so api-gateway and collector don't race on schema creation.
+
+### What's in there (sample run)
+
+After ~1h 40m of streaming the bundled CSV with default settings:
+
+| table | rows |
+|---|---|
+| `gpus` | 247 |
+| `telemetry` | ~4.3M |
+
+10 distinct `metric_name` values, evenly distributed (~430k each):
+`DCGM_FI_DEV_GPU_UTIL`, `DCGM_FI_DEV_MEM_COPY_UTIL`, `DCGM_FI_DEV_FB_USED`, `DCGM_FI_DEV_FB_FREE`, `DCGM_FI_DEV_GPU_TEMP`, `DCGM_FI_DEV_POWER_USAGE`, `DCGM_FI_DEV_MEM_CLOCK`, `DCGM_FI_DEV_SM_CLOCK`, `DCGM_FI_DEV_ENC_UTIL`, `DCGM_FI_DEV_DEC_UTIL`.
+
+### Useful queries
+
+```sql
+-- ingest rate over the last minute
+SELECT count(*) FROM telemetry
+WHERE collected_at > now() - interval '1 minute';
+
+-- per-GPU sample count in the last 5 minutes
+SELECT gpu_uuid, count(*)
+FROM telemetry
+WHERE collected_at > now() - interval '5 minutes'
+GROUP BY gpu_uuid
+ORDER BY count DESC
+LIMIT 10;
+
+-- latest value per metric for one GPU
+SELECT DISTINCT ON (metric_name) metric_name, metric_value, collected_at
+FROM telemetry
+WHERE gpu_uuid = '<UUID>'
+ORDER BY metric_name, collected_at DESC;
+
+-- table sizes on disk
+SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) AS size
+FROM pg_catalog.pg_statio_user_tables
+ORDER BY pg_total_relation_size(relid) DESC;
+
+-- which migrations have been applied
+SELECT * FROM schema_migrations;
 ```
 
 ## API
