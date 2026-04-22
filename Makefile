@@ -61,7 +61,7 @@ openapi:
 	  --dir          . \
 	  --output       docs \
 	  --outputTypes  yaml,json \
-	  --parseDependency
+	  --parseInternal
 
 # ── Docker ─────────────────────────────────────────────────────────────────────
 

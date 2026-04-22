@@ -23,6 +23,8 @@ const (
 )
 
 // TelemetryPage is the paginated response envelope for the telemetry endpoint.
+//
+// @Description Paginated telemetry response
 type TelemetryPage struct {
 	Data    []model.TelemetryRecord `json:"data"`
 	Limit   int                     `json:"limit"`

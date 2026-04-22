@@ -27,7 +27,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.GPU"
+                                "$ref": "#/definitions/model.GPU"
                             }
                         }
                     },
@@ -63,6 +63,12 @@
                     },
                     {
                         "type": "string",
+                        "description": "Filter by metric name (e.g. DCGM_FI_DEV_GPU_UTIL)",
+                        "name": "metric_name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Start time filter, inclusive (RFC3339, e.g. 2006-01-02T15:04:05Z)",
                         "name": "start_time",
                         "in": "query"
@@ -90,7 +96,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.TelemetryPage"
+                            "$ref": "#/definitions/api.TelemetryPage"
                         }
                     },
                     "400": {
@@ -169,7 +175,29 @@
         }
     },
     "definitions": {
-        "github_com_example_gpu-telemetry-pipeline_internal_model.GPU": {
+        "api.TelemetryPage": {
+            "description": "Paginated telemetry response",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.TelemetryRecord"
+                    }
+                },
+                "has_more": {
+                    "type": "boolean"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.GPU": {
+            "description": "GPU device record",
             "type": "object",
             "properties": {
                 "hostname": {
@@ -183,7 +211,8 @@
                 }
             }
         },
-        "github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord": {
+        "model.TelemetryRecord": {
+            "description": "Single telemetry data point",
             "type": "object",
             "properties": {
                 "collected_at": {
@@ -203,26 +232,6 @@
                 },
                 "metric_value": {
                     "type": "number"
-                }
-            }
-        },
-        "internal_api.TelemetryPage": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord"
-                    }
-                },
-                "has_more": {
-                    "type": "boolean"
-                },
-                "limit": {
-                    "type": "integer"
-                },
-                "offset": {
-                    "type": "integer"
                 }
             }
         }

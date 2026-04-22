@@ -1,6 +1,21 @@
 basePath: /
 definitions:
-  github_com_example_gpu-telemetry-pipeline_internal_model.GPU:
+  api.TelemetryPage:
+    description: Paginated telemetry response
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/model.TelemetryRecord'
+        type: array
+      has_more:
+        type: boolean
+      limit:
+        type: integer
+      offset:
+        type: integer
+    type: object
+  model.GPU:
+    description: GPU device record
     properties:
       hostname:
         type: string
@@ -9,7 +24,8 @@ definitions:
       uuid:
         type: string
     type: object
-  github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord:
+  model.TelemetryRecord:
+    description: Single telemetry data point
     properties:
       collected_at:
         type: string
@@ -23,19 +39,6 @@ definitions:
         type: string
       metric_value:
         type: number
-    type: object
-  internal_api.TelemetryPage:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.TelemetryRecord'
-        type: array
-      has_more:
-        type: boolean
-      limit:
-        type: integer
-      offset:
-        type: integer
     type: object
 host: localhost:8080
 info:
@@ -56,7 +59,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_example_gpu-telemetry-pipeline_internal_model.GPU'
+              $ref: '#/definitions/model.GPU'
             type: array
         "500":
           description: Internal Server Error
@@ -76,6 +79,10 @@ paths:
         in: path
         name: id
         required: true
+        type: string
+      - description: Filter by metric name (e.g. DCGM_FI_DEV_GPU_UTIL)
+        in: query
+        name: metric_name
         type: string
       - description: Start time filter, inclusive (RFC3339, e.g. 2006-01-02T15:04:05Z)
         in: query
@@ -99,7 +106,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.TelemetryPage'
+            $ref: '#/definitions/api.TelemetryPage'
         "400":
           description: Bad Request
           schema:

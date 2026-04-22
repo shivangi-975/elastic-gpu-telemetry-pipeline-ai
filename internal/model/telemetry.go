@@ -11,6 +11,8 @@ import "time"
 // MetricName is the name of the metric collected (e.g. DCGM_FI_DEV_GPU_UTIL).
 // MetricValue is the numeric value of the metric.
 // CollectedAt is the time.Now() at point of publish, never sourced from CSV.
+//
+// @Description Single telemetry data point
 type TelemetryRecord struct {
 	ID          int64     `json:"id"`
 	GPUUUID     string    `json:"gpu_uuid"`
