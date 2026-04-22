@@ -8,7 +8,6 @@ Data flow: `streamer → mq-server → collector → postgres ← api-gateway`
 
 - [Swagger UI](http://localhost:8080/swagger/index.html) — available when stack is running
 - [OpenAPI spec](docs/swagger.yaml)
-- [Architecture diagram](docs/architecture.excalidraw) — open at excalidraw.com
 
 ## Design
 
