@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-api-gateway
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  type: {{ .Values.apiGateway.service.type }}
+  selector:
+    {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+  ports:
+    - name: http
+      port: {{ .Values.apiGateway.service.port }}
+      targetPort: http
+      protocol: TCP

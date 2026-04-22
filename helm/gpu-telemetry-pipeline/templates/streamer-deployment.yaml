@@ -1,0 +1,81 @@
+{{- $ := . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-streamer
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: streamer
+spec:
+  replicas: {{ .Values.streamer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: streamer
+  template:
+    metadata:
+      labels:
+        {{- include "gpu-telemetry-pipeline.labels" . | nindent 8 }}
+        app.kubernetes.io/component: streamer
+      {{- with .Values.streamer.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "gpu-telemetry-pipeline.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      initContainers:
+        - name: wait-for-mq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- {{ include "gpu-telemetry-pipeline.mqURL" . }}/health; do
+                echo "waiting for mq-server..."; sleep 2;
+              done
+      containers:
+        - name: streamer
+          image: {{ include "gpu-telemetry-pipeline.serviceImage" (dict "svc" .Values.streamer "root" $) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MQ_URL
+              value: {{ include "gpu-telemetry-pipeline.mqURL" . | quote }}
+            - name: CSV_PATH
+              value: /data/metrics.csv
+            - name: STREAM_INTERVAL_MS
+              value: {{ .Values.streamer.intervalMs | quote }}
+            - name: STREAM_BATCH_SIZE
+              value: {{ .Values.streamer.batchSize | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: csv
+              mountPath: /data
+              readOnly: true
+          resources:
+            {{- toYaml .Values.streamer.resources | nindent 12 }}
+      volumes:
+        - name: csv
+          configMap:
+            name: {{ .Values.streamer.csv.existingConfigMap | default (printf "%s-dcgm-csv" (include "gpu-telemetry-pipeline.fullname" .)) }}
+            items:
+              - key: metrics.csv
+                path: metrics.csv
+      {{- with .Values.streamer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.streamer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.streamer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

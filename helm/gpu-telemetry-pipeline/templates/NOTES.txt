@@ -1,0 +1,49 @@
+GPU Telemetry Pipeline installed successfully!
+
+Release : {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Services
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  MQ Server   {{ include "gpu-telemetry-pipeline.mqURL" . }}
+  API Gateway http://{{ include "gpu-telemetry-pipeline.fullname" . }}-api-gateway:{{ .Values.apiGateway.service.port }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Quick start
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Forward the API gateway to localhost:
+
+   kubectl -n {{ .Release.Namespace }} port-forward \
+     svc/{{ include "gpu-telemetry-pipeline.fullname" . }}-api-gateway \
+     8080:{{ .Values.apiGateway.service.port }}
+
+2. List GPUs:
+
+   curl http://localhost:8080/api/v1/gpus
+
+3. Query telemetry for a GPU:
+
+   curl "http://localhost:8080/api/v1/gpus/<UUID>/telemetry?start=<RFC3339>"
+
+4. Watch MQ queue depth:
+
+   kubectl -n {{ .Release.Namespace }} port-forward \
+     svc/{{ include "gpu-telemetry-pipeline.fullname" . }}-mq-server \
+     9000:{{ .Values.mqServer.service.port }}
+
+   curl http://localhost:9000/metrics
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Production checklist
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [ ] Push images to a registry and set global.imageRegistry / image.tag
+  [ ] Set postgresql.auth.password to a strong secret (use Vault or ESO)
+  [ ] Replace streamer.csv.data with streamer.csv.existingConfigMap pointing
+      to a ConfigMap that contains the real DCGM export (or use a PVC)
+  [ ] Enable apiGateway.ingress with a valid hostname and TLS secret
+  [ ] Review resource requests/limits per service
+  [ ] Add HPA for collector and api-gateway if load is variable

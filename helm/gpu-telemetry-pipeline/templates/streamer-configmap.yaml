@@ -1,0 +1,12 @@
+{{- if not .Values.streamer.csv.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-dcgm-csv
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: streamer
+data:
+  metrics.csv: |
+    {{- .Values.streamer.csv.data | nindent 4 }}
+{{- end }}

@@ -1,0 +1,32 @@
+{{- if .Values.apiGateway.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-api-gateway
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+  {{- with .Values.apiGateway.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.apiGateway.ingress.className }}
+  ingressClassName: {{ .Values.apiGateway.ingress.className }}
+  {{- end }}
+  {{- with .Values.apiGateway.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.apiGateway.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.apiGateway.ingress.path }}
+            pathType: {{ .Values.apiGateway.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "gpu-telemetry-pipeline.fullname" . }}-api-gateway
+                port:
+                  name: http
+{{- end }}

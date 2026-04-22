@@ -1,0 +1,15 @@
+apiVersion: v2
+name: gpu-telemetry-pipeline
+description: >
+  Elastic GPU Telemetry Pipeline – custom in-memory MQ, streamer, collector,
+  and REST API gateway backed by PostgreSQL.
+type: application
+version: 0.2.0
+appVersion: "0.1.0"
+keywords:
+  - gpu
+  - telemetry
+  - dcgm
+  - pipeline
+maintainers:
+  - name: platform-team

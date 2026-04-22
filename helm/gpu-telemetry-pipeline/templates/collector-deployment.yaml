@@ -1,0 +1,84 @@
+{{- $ := . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-collector
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: collector
+spec:
+  replicas: {{ .Values.collector.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: collector
+  template:
+    metadata:
+      labels:
+        {{- include "gpu-telemetry-pipeline.labels" . | nindent 8 }}
+        app.kubernetes.io/component: collector
+      {{- with .Values.collector.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "gpu-telemetry-pipeline.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      initContainers:
+        - name: wait-for-mq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- {{ include "gpu-telemetry-pipeline.mqURL" . }}/health; do
+                echo "waiting for mq-server..."; sleep 2;
+              done
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "gpu-telemetry-pipeline.postgresHost" . }} 5432; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+      containers:
+        - name: collector
+          image: {{ include "gpu-telemetry-pipeline.serviceImage" (dict "svc" .Values.collector "root" $) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MQ_URL
+              value: {{ include "gpu-telemetry-pipeline.mqURL" . | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-db-secret
+                  key: url
+            - name: CONSUMER_GROUP
+              value: {{ .Values.collector.consumerGroup | quote }}
+            - name: COLLECT_BATCH_SIZE
+              value: {{ .Values.collector.batchSize | quote }}
+            - name: COLLECT_POLL_MS
+              value: {{ .Values.collector.pollIntervalMs | quote }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            {{- toYaml .Values.collector.resources | nindent 12 }}
+      {{- with .Values.collector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

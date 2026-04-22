@@ -1,0 +1,78 @@
+{{- $ := . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-mq-server
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mq-server
+spec:
+  replicas: {{ .Values.mqServer.replicaCount }}
+  # In-memory queue is node-local; Recreate avoids split-brain during rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mq-server
+  template:
+    metadata:
+      labels:
+        {{- include "gpu-telemetry-pipeline.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mq-server
+      {{- with .Values.mqServer.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "gpu-telemetry-pipeline.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: mq-server
+          image: {{ include "gpu-telemetry-pipeline.serviceImage" (dict "svc" .Values.mqServer "root" $) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MQ_PARTITIONS
+              value: {{ .Values.mqServer.partitions | quote }}
+            - name: MQ_MAX_QUEUE_SIZE
+              value: {{ .Values.mqServer.maxQueueSize | quote }}
+            - name: MQ_LISTEN_ADDR
+              value: {{ .Values.mqServer.listenAddr | quote }}
+            {{- if .Values.mqServer.walPath }}
+            - name: MQ_WAL_PATH
+              value: {{ .Values.mqServer.walPath | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.mqServer.resources | nindent 12 }}
+      {{- with .Values.mqServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mqServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mqServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,19 @@
+{{- if and .Values.postgresql.enabled (not .Values.db.external.enabled) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-postgresql
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+{{- end }}

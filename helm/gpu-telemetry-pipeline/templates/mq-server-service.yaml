@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gpu-telemetry-pipeline.fullname" . }}-mq-server
+  labels:
+    {{- include "gpu-telemetry-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mq-server
+spec:
+  type: {{ .Values.mqServer.service.type }}
+  selector:
+    {{- include "gpu-telemetry-pipeline.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mq-server
+  ports:
+    - name: http
+      port: {{ .Values.mqServer.service.port }}
+      targetPort: http
+      protocol: TCP
