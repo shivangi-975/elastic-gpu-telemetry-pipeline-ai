@@ -1,0 +1,24 @@
+# Stage 1 – static busybox for the /health check (no shell needed in final image)
+FROM alpine:3.19 AS tools
+RUN apk add --no-cache busybox-static
+
+# Stage 2 – compile
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/mq-server ./cmd/mq-server
+
+# Stage 3 – minimal runtime image (WAL disabled, no /data needed)
+FROM gcr.io/distroless/static-debian12
+
+COPY --from=tools    /bin/busybox.static /busybox
+COPY --from=builder  /bin/mq-server      /mq-server
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/mq-server"]

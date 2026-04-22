@@ -1,0 +1,106 @@
+version: "3.8"
+
+x-build-defaults: &build-defaults
+  pull: false
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL – persistent store for GPU registry and telemetry records
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: telemetry
+      POSTGRES_USER: telemetry
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetry -d telemetry"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # MQ Server – in-memory message queue (WAL disabled: no filesystem dependency)
+  # ---------------------------------------------------------------------------
+  mq-server:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.mq-server
+    ports:
+      - "9001:9000"   # 9000 already allocated on host; container binds :9000 internally
+    environment:
+      MQ_PARTITIONS: "8"
+      MQ_MAX_QUEUE_SIZE: "4096"
+      MQ_LISTEN_ADDR: ":9000"
+      # MQ_WAL_PATH intentionally omitted – WAL disabled, no volume needed
+    healthcheck:
+      test: ["CMD", "/busybox", "wget", "-qO-", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Streamer – reads DCGM CSV rows and publishes batches to mq-server
+  # ---------------------------------------------------------------------------
+  streamer:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.streamer
+    environment:
+      MQ_URL: http://mq-server:9000
+      CSV_PATH: /data/metrics.csv
+      STREAM_INTERVAL_MS: "100"
+      STREAM_BATCH_SIZE: "50"
+    volumes:
+      - ./data/dcgm_metrics.csv:/data/metrics.csv:ro
+    depends_on:
+      mq-server:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Collector – consumes from mq-server and persists to PostgreSQL
+  # ---------------------------------------------------------------------------
+  collector:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.collector
+    environment:
+      MQ_URL: http://mq-server:9000
+      DATABASE_URL: postgres://telemetry:changeme@postgres:5432/telemetry?sslmode=disable
+      CONSUMER_GROUP: telemetry-collectors
+    depends_on:
+      mq-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # API Gateway – serves telemetry query API backed by PostgreSQL
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      dockerfile: build/Dockerfile.api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://telemetry:changeme@postgres:5432/telemetry?sslmode=disable
+      PORT: "8080"
+    healthcheck:
+      test: ["CMD", "/busybox", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

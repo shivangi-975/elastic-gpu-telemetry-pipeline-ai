@@ -1,0 +1,28 @@
+# compiled binaries
+bin/
+api-gateway
+mq-server
+streamer
+collector
+
+# test artefacts
+coverage.out
+coverage.html
+
+# local config / IDE
+.claude/
+.idea/
+scripts/
+tests/
+helm/
+
+# git
+.git/
+.gitignore
+.gitlab-ci.yml
+
+# misc
+*.md
+Makefile
+QUICKSTART.md
+AI_USAGE.md
