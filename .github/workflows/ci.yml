@@ -1,0 +1,206 @@
+---
+# GPU Telemetry Pipeline — GitHub Actions CI/CD
+#
+# Stages:
+#   test     → unit tests + coverage report
+#   integration-test → store tests against real Postgres
+#   build    → build & push Docker images to ghcr.io/shivangi-975
+#   deploy   → helm upgrade to staging (main) / production (tag, manual)
+#
+# Required repository secrets (Settings → Secrets → Actions):
+#   KUBE_CONFIG   Base64-encoded kubeconfig with cluster access
+#
+# ghcr.io push uses the automatic GITHUB_TOKEN — no extra secret needed.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/shivangi-975
+  GO_VERSION: "1.23"
+  HELM_RELEASE: gpu-telemetry
+
+jobs:
+
+  # ── Unit tests ──────────────────────────────────────────────────────────────
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests with coverage
+        run: |
+          go test ./... -short -race -count=1 \
+            -coverprofile=coverage.out -covermode=atomic
+          go tool cover -func=coverage.out
+
+      - name: Convert coverage to Cobertura (GitLab-compatible XML)
+        run: |
+          go install github.com/boumenot/gocover-cobertura@latest
+          gocover-cobertura < coverage.out > coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.out
+            coverage.xml
+          retention-days: 7
+
+  # ── Integration tests (real Postgres via service container) ─────────────────
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: telemetry
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: telemetry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run store integration tests
+        env:
+          TEST_DATABASE_URL: postgres://telemetry:changeme@localhost:5432/telemetry?sslmode=disable
+        run: go test ./internal/store/... -timeout=120s -v
+
+  # ── Build & push Docker images ──────────────────────────────────────────────
+  build:
+    name: Build & Push (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    needs: unit-test
+    if: github.event_name == 'push'   # not on PRs
+    strategy:
+      matrix:
+        service: [api-gateway, mq-server, streamer, collector]
+    permissions:
+      contents: read
+      packages: write   # needed to push to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: build/Dockerfile.${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+          cache-to: type=inline
+
+  # ── Deploy to staging (every merge to main) ─────────────────────────────────
+  deploy-staging:
+    name: Deploy — Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://gpu-telemetry.staging.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.14.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Helm deploy staging
+        run: |
+          helm dependency update helm/gpu-telemetry-pipeline
+          helm upgrade --install ${{ env.HELM_RELEASE }} helm/gpu-telemetry-pipeline \
+            --namespace   telemetry-staging \
+            --create-namespace \
+            --set global.imageRegistry=${{ env.IMAGE_PREFIX }} \
+            --set image.tag=${{ github.sha }} \
+            --values helm/gpu-telemetry-pipeline/values.yaml \
+            --values helm/gpu-telemetry-pipeline/values.staging.yaml \
+            --wait \
+            --timeout 5m
+
+  # ── Deploy to production (git tag only, manual approval) ────────────────────
+  deploy-production:
+    name: Deploy — Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: https://gpu-telemetry.example.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.14.0"
+
+      - name: Write kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Helm deploy production
+        run: |
+          helm dependency update helm/gpu-telemetry-pipeline
+          helm upgrade --install ${{ env.HELM_RELEASE }} helm/gpu-telemetry-pipeline \
+            --namespace   telemetry \
+            --create-namespace \
+            --set global.imageRegistry=${{ env.IMAGE_PREFIX }} \
+            --set image.tag=${{ github.sha }} \
+            --values helm/gpu-telemetry-pipeline/values.yaml \
+            --values helm/gpu-telemetry-pipeline/values.production.yaml \
+            --wait \
+            --timeout 5m
