@@ -192,6 +192,7 @@ func (s *Streamer) parseRow(record []string) (model.PublishMessage, bool) {
 	rec := model.TelemetryRecord{
 		GPUUUID:     record[4],
 		Hostname:    record[6],
+		ModelName:   record[5],
 		MetricName:  record[1],
 		MetricValue: metricValue,
 		CollectedAt: time.Now().UTC(),

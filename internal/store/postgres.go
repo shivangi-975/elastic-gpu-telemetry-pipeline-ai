@@ -171,13 +171,17 @@ func (s *Store) applyMigration(ctx context.Context, version int, sql string) err
 // value, preventing stale writes from overwriting fresher state.
 func (s *Store) UpsertGPU(ctx context.Context, gpu model.GPU) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO gpus (uuid, hostname, last_seen)
-		VALUES ($1, $2, $3)
+		INSERT INTO gpus (uuid, hostname, model_name, last_seen)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (uuid) DO UPDATE
-			SET hostname  = EXCLUDED.hostname,
-			    last_seen = EXCLUDED.last_seen
+			SET hostname   = EXCLUDED.hostname,
+			    model_name = CASE
+			                   WHEN EXCLUDED.model_name <> '' THEN EXCLUDED.model_name
+			                   ELSE gpus.model_name
+			                 END,
+			    last_seen  = EXCLUDED.last_seen
 			WHERE gpus.last_seen < EXCLUDED.last_seen`,
-		gpu.UUID, gpu.Hostname, gpu.LastSeen,
+		gpu.UUID, gpu.Hostname, gpu.ModelName, gpu.LastSeen,
 	)
 	if err != nil {
 		return fmt.Errorf("store: upsert gpu: %w", err)
@@ -189,7 +193,7 @@ func (s *Store) UpsertGPU(ctx context.Context, gpu model.GPU) error {
 // a non-nil slice; an empty table yields an empty slice.
 func (s *Store) ListGPUs(ctx context.Context) ([]model.GPU, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT uuid, hostname, last_seen FROM gpus ORDER BY uuid ASC`)
+		`SELECT uuid, hostname, model_name, last_seen FROM gpus ORDER BY uuid ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list gpus: %w", err)
 	}
@@ -198,7 +202,7 @@ func (s *Store) ListGPUs(ctx context.Context) ([]model.GPU, error) {
 	gpus := []model.GPU{}
 	for rows.Next() {
 		var g model.GPU
-		if err := rows.Scan(&g.UUID, &g.Hostname, &g.LastSeen); err != nil {
+		if err := rows.Scan(&g.UUID, &g.Hostname, &g.ModelName, &g.LastSeen); err != nil {
 			return nil, fmt.Errorf("store: scan gpu: %w", err)
 		}
 		gpus = append(gpus, g)

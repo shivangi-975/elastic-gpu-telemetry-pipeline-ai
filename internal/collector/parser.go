@@ -16,9 +16,10 @@ func ExtractGPUs(msgs []model.PublishMessage) []model.GPU {
 		existing, ok := seen[p.GPUUUID]
 		if !ok || p.CollectedAt.After(existing.LastSeen) {
 			seen[p.GPUUUID] = model.GPU{
-				UUID:     p.GPUUUID,
-				Hostname: p.Hostname,
-				LastSeen: p.CollectedAt,
+				UUID:      p.GPUUUID,
+				Hostname:  p.Hostname,
+				ModelName: p.ModelName,
+				LastSeen:  p.CollectedAt,
 			}
 		}
 	}

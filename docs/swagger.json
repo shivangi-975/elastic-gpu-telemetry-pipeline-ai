@@ -206,6 +206,9 @@
                 "last_seen": {
                     "type": "string"
                 },
+                "model_name": {
+                    "type": "string"
+                },
                 "uuid": {
                     "type": "string"
                 }
@@ -232,6 +235,9 @@
                 },
                 "metric_value": {
                     "type": "number"
+                },
+                "model_name": {
+                    "type": "string"
                 }
             }
         }

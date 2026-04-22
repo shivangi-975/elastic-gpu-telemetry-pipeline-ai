@@ -47,7 +47,7 @@ Stateless HTTP server using `gorilla/mux`. Three categories of endpoints:
 Two tables managed by version-tracked SQL migrations under `internal/store/migrations/`:
 
 ```
-gpus(uuid PRIMARY KEY, hostname, last_seen)
+gpus(uuid PRIMARY KEY, hostname, model_name, last_seen)
 telemetry(id BIGSERIAL, gpu_uuid → gpus, metric_name, metric_value, collected_at)
 ```
 

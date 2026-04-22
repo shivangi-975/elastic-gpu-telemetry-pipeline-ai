@@ -8,6 +8,9 @@ import "time"
 // GPUUUID is the UUID of the GPU that generated the record.
 // Hostname is the hostname of the machine where the GPU resides; used by the
 // collector to upsert the GPU registry and not stored in the telemetry table.
+// ModelName is the human-readable GPU model from DCGM (e.g. "NVIDIA H100 80GB
+// HBM3"); used by the collector to upsert the GPU registry and not stored in
+// the telemetry table.
 // MetricName is the name of the metric collected (e.g. DCGM_FI_DEV_GPU_UTIL).
 // MetricValue is the numeric value of the metric.
 // CollectedAt is the time.Now() at point of publish, never sourced from CSV.
@@ -17,6 +20,7 @@ type TelemetryRecord struct {
 	ID          int64     `json:"id"`
 	GPUUUID     string    `json:"gpu_uuid"`
 	Hostname    string    `json:"hostname"`
+	ModelName   string    `json:"model_name,omitempty"`
 	MetricName  string    `json:"metric_name"`
 	MetricValue float64   `json:"metric_value"`
 	CollectedAt time.Time `json:"collected_at"`
