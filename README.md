@@ -10,6 +10,7 @@ Data flow: `streamer → mq-server → collector → postgres ← api-gateway`
 - [OpenAPI spec](docs/swagger.yaml)
 - [Grafana dashboard](http://localhost:3000/d/gpu-telemetry-overview) — pipeline overview, anonymous viewer enabled
 - [Prometheus](http://localhost:9090) — raw query interface
+- [MQ internals diagram](docs/mq-internals.excalidraw) — open at [excalidraw.com](https://excalidraw.com) (File → Open) to view partitions, WAL, and consumer-group rebalance
 
 ## Design
 
