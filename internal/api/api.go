@@ -163,14 +163,15 @@ func metricsMiddleware(next http.Handler) http.Handler {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		duration := time.Since(start)
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
 
 		slog.Info("http request",
 			"component", "api-gateway",
 			"method", r.Method,
 			"path", r.URL.Path,
-			"duration_ms", duration.Milliseconds(),
+			"status", rec.status,
+			"duration_ms", time.Since(start).Milliseconds(),
 			"user_agent", r.UserAgent(),
 		)
 	})

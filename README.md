@@ -500,7 +500,7 @@ Reference numbers from `make up` running on an M-series Mac (Colima 4 CPU / 8 GB
 | Collector COPY insert | 50 rows in <2ms |
 | MQ publish latency | <1ms p99 |
 | MQ broker memory (steady state) | <50 MB |
-| Postgres pool: max conns | 10 (configurable) |
+| Postgres pool: max conns | 20 (configurable) |
 
 The bottleneck under sustained load is Postgres disk IOPS, not the MQ or network. With 10 collectors and 16 MQ partitions, the system has been tested at ~25k messages/sec sustained on a single Postgres instance.
 

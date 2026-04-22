@@ -6,9 +6,9 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/example/gpu-telemetry-pipeline/internal/metrics"
@@ -206,11 +206,6 @@ func (c *Collector) sleep(ctx context.Context) {
 // isContextError checks if the error is due to context cancellation or deadline.
 // These errors are expected when the MQ has no new messages and the request times out.
 func isContextError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "context canceled") ||
-		strings.Contains(errStr, "context deadline exceeded")
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 

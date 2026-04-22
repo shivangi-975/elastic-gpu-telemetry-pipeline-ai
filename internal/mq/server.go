@@ -39,12 +39,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// ListenAndServe starts the HTTP server on cfg.ListenAddr.
-func (s *Server) ListenAndServe() error {
-	slog.Info("mq server starting", "component", "mq", "addr", s.cfg.ListenAddr)
-	return http.ListenAndServe(s.cfg.ListenAddr, s.mux)
-}
-
 // Shutdown stops the broker's background goroutines (eviction loop) and
 // closes the WAL file. Call this after the HTTP server has been shut down.
 func (s *Server) Shutdown() {
